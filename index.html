@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#121315" />
+    <meta name="description" content="Personalize sua camiseta em 3D: escolha o modelo, adicione cor, arte e texto e exporte uma prévia frente e costas." />
+    <title>Oficina / Camiseta — Estúdio 3D</title>
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Oficina / Camiseta — início">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="m15 10 9-4 9 4 10 6-5 9-6-3v20H16V22l-6 3-5-9 10-6Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M19 8c.5 4 2.2 6 5 6s4.5-2 5-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+          <span class="brand-copy"><strong>oficina <i>/</i> camiseta</strong><small>estúdio de personalização</small></span>
+        </a>
+        <div class="header-actions">
+          <span class="local-status"><i></i> edição local</span>
+          <button class="icon-button" id="resetButton" type="button" title="Reiniciar personalização" aria-label="Reiniciar personalização">↻</button>
+          <button class="button primary export-top" id="exportButton" type="button"><span aria-hidden="true">↓</span> Exportar PNG</button>
+        </div>
+      </header>
+
+      <div class="editor-layout">
+        <nav class="toolbar" aria-label="Ferramentas do editor">
+          <p class="toolbar-heading">Ferramentas</p>
+          <button class="tool active" type="button" data-panel="modelo" aria-pressed="true"><span class="tool-icon">◇</span><span class="tool-label">Visão</span></button>
+          <button class="tool" type="button" data-panel="modelos" aria-pressed="false"><span class="tool-icon">♧</span><span class="tool-label">Modelos</span></button>
+          <button class="tool" type="button" data-panel="cores" aria-pressed="false"><span class="tool-icon">◉</span><span class="tool-label">Cores</span></button>
+          <button class="tool" type="button" data-panel="arte" aria-pressed="false"><span class="tool-icon">▧</span><span class="tool-label">Arte</span></button>
+          <button class="tool" type="button" data-panel="texto" aria-pressed="false"><span class="tool-icon">T</span><span class="tool-label">Texto</span></button>
+          <button class="tool" type="button" data-panel="cena" aria-pressed="false"><span class="tool-icon">☼</span><span class="tool-label">Cena</span></button>
+          <button class="tool" type="button" data-panel="exportar" aria-pressed="false"><span class="tool-icon">↓</span><span class="tool-label">Exportar</span></button>
+        </nav>
+
+        <main class="workspace">
+          <div class="workspace-header">
+            <div><p class="eyebrow">EDITOR DE CAMISETA</p><h1>Vista ao vivo</h1><p class="workspace-subtitle">Personalize sua peça em três dimensões.</p></div>
+            <div class="view-switch" role="group" aria-label="Lado da camiseta">
+              <button class="view-button active" type="button" data-angle="0" aria-pressed="true">Frente</button>
+              <button class="view-button" type="button" data-angle="180" aria-pressed="false">Costas</button>
+              <button class="view-button" type="button" data-angle="90" aria-pressed="false">Lateral</button>
+            </div>
+          </div>
+          <section class="stage" aria-label="Pré-visualização 3D da camiseta">
+            <div class="stage-label"><span class="live-dot"></span><span>ÁREA DE TRABALHO</span><span class="stage-divider">/</span><strong id="angleLabel">FRENTE</strong></div>
+            <div id="viewport"><div id="three"></div><div class="loading" id="loadingMessage">Preparando seu estúdio…</div></div>
+            <div class="stage-footer">
+              <div class="model-name"><strong id="modelLabel">Camiseta essencial</strong><span id="colorLabel">· #E7E4DC</span></div>
+              <p class="stage-hint" id="stageHint">Arraste para girar · use a roda ou + / − para aproximar</p>
+              <div class="zoom-controls" aria-label="Controles de zoom">
+                <button id="zoomOut" type="button" aria-label="Diminuir zoom" title="Diminuir zoom">−</button><span id="zoomLabel">100%</span><button id="zoomIn" type="button" aria-label="Aumentar zoom" title="Aumentar zoom">+</button><button class="fit-button" id="fitButton" type="button" aria-label="Ajustar ao quadro" title="Ajustar camiseta ao quadro">⌗</button>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="inspector" id="inspector" aria-label="Painel de personalização">
+          <div class="inspector-header"><p class="eyebrow">PAINEL DE CONTROLE</p><h2 id="panelTitle">Visão</h2></div>
+          <section class="panel" id="panel-modelo" data-panel-content="modelo">
+            <div class="panel-intro"><span class="intro-number">01</span><div><h3>Sua camiseta</h3><p>Gire a peça ou escolha uma vista.</p></div></div>
+            <div class="section"><div class="section-title">Ângulos</div><div class="tools-row"><button class="button angle-shortcut active" type="button" data-angle="0">Frente</button><button class="button angle-shortcut" type="button" data-angle="180">Costas</button><button class="button angle-shortcut" type="button" data-angle="90">Lateral</button></div></div>
+            <div class="section"><div class="section-title">Comportamento</div><button class="button wide-button" id="animateButton" type="button"><span>⟳</span> Girar automaticamente</button></div>
+            <div class="tip-card"><span>✦</span><p><strong>Dica</strong> Arraste a peça para encontrar o melhor ângulo. Seus ajustes ficam neste dispositivo.</p></div>
+          </section>
+
+          <section class="panel" id="panel-modelos" data-panel-content="modelos" hidden>
+            <div class="panel-intro"><span class="intro-number">02</span><div><h3>Escolha o modelo</h3><p>Comece pela silhueta da peça.</p></div></div>
+            <div class="model-grid">
+              <button class="model-option active" type="button" data-model="tee" aria-pressed="true"><span class="model-glyph">▱</span><span>Camiseta</span></button>
+              <button class="model-option" type="button" data-model="long" aria-pressed="false"><span class="model-glyph">⌑</span><span>Manga longa</span></button>
+              <button class="model-option" type="button" data-model="cropped" aria-pressed="false"><span class="model-glyph">▰</span><span>Cropped</span></button>
+              <button class="model-option" type="button" data-model="hoodie" aria-pressed="false"><span class="model-glyph">⌂</span><span>Moletom</span></button>
+              <button class="model-option" type="button" data-model="tank" aria-pressed="false"><span class="model-glyph">♧</span><span>Regata</span></button>
+              <button class="model-option" type="button" data-model="polo" aria-pressed="false"><span class="model-glyph">◇</span><span>Polo</span></button>
+              <button class="model-option" type="button" data-model="button" aria-pressed="false"><span class="model-glyph">⊞</span><span>Camisa</span></button>
+            </div><p class="panel-note">Ajuste o zoom para enquadrar qualquer modelo.</p>
+          </section>
+
+          <section class="panel" id="panel-cores" data-panel-content="cores" hidden>
+            <div class="panel-intro"><span class="intro-number">03</span><div><h3>Encontre sua cor</h3><p>Toque no disco ou escolha uma amostra.</p></div></div>
+            <div class="section color-wheel-section"><div class="section-title">Disco de cores</div><div class="wheel-wrap"><canvas id="colorWheel" width="256" height="256" role="slider" tabindex="0" aria-label="Disco de cores. Use as setas ou arraste para escolher tom e saturação." aria-valuetext="Off-white"></canvas></div><p class="wheel-help">Arraste para escolher o tom. Ajuste a claridade abaixo.</p><label class="lightness-label" for="shirtLightness">Claridade <output id="shirtLightnessValue">68%</output></label><input id="shirtLightness" type="range" min="24" max="88" value="68" /></div>
+            <div class="section"><div class="section-title">Paleta rápida</div><div class="swatches">
+              <button class="swatch active" type="button" data-color="#E7E4DC" aria-label="Off-white" style="--swatch:#E7E4DC"></button><button class="swatch" type="button" data-color="#202226" aria-label="Preto carvão" style="--swatch:#202226"></button><button class="swatch" type="button" data-color="#D6EF55" aria-label="Verde-lima" style="--swatch:#D6EF55"></button><button class="swatch" type="button" data-color="#879A83" aria-label="Verde sálvia" style="--swatch:#879A83"></button><button class="swatch" type="button" data-color="#BDA9D4" aria-label="Lavanda" style="--swatch:#BDA9D4"></button><button class="swatch" type="button" data-color="#D48767" aria-label="Terracota" style="--swatch:#D48767"></button>
+            </div></div>
+            <div class="section color-value-section"><label for="shirtColor">Cor da camiseta</label><div class="color-field"><input type="color" id="shirtColor" value="#e7e4dc" /><output id="shirtColorText">#E7E4DC</output></div></div>
+          </section>
+
+          <section class="panel" id="panel-arte" data-panel-content="arte" hidden>
+            <div class="panel-intro"><span class="intro-number">04</span><div><h3>Adicione sua arte</h3><p>Imagem e pintura ficam na estampa.</p></div></div>
+            <div class="section"><div class="section-title">Imagem ao peito</div><label class="file-drop" for="artUpload"><span class="upload-icon">↑</span><strong>Escolher imagem</strong><small>PNG, JPG, SVG ou WebP · até 12 MB</small><input type="file" id="artUpload" accept="image/png,image/jpeg,image/svg+xml,image/webp" /></label><div class="upload-state" id="uploadState" hidden><span id="uploadName">Imagem carregada</span><button id="removeArtwork" type="button" aria-label="Remover imagem">×</button></div></div>
+            <div class="section"><div class="section-title">Pintura manual</div><p class="panel-note">Ative o pincel e desenhe diretamente na frente ou nas costas.</p><button class="button wide-button paint-button" id="paintButton" type="button" aria-pressed="false"><span>✎</span> Ativar pincel</button><div class="paint-options"><label for="paintColor">Cor do pincel<input type="color" id="paintColor" value="#d6ef55" /></label><label for="paintSize">Espessura <output id="paintSizeValue">8 px</output><input type="range" id="paintSize" min="2" max="30" value="8" /></label></div><button class="text-button" id="clearPaint" type="button">Limpar pintura</button></div>
+          </section>
+
+          <section class="panel" id="panel-texto" data-panel-content="texto" hidden>
+            <div class="panel-intro"><span class="intro-number">05</span><div><h3>Seu texto</h3><p>Uma frase curta para dar personalidade.</p></div></div>
+            <div class="section"><label for="shirtText">Texto da estampa</label><input class="text-input" type="text" maxlength="48" id="shirtText" value="FEITO À MÃO" placeholder="Digite sua frase" /><div class="field-caption"><span>Prévia na frente e nas costas</span><span id="textCounter">11 / 48</span></div></div>
+            <div class="section"><label for="textColor">Cor do texto</label><div class="color-field"><input type="color" id="textColor" value="#1c2620" /><output id="textColorValue">#1C2620</output></div></div>
+            <div class="section"><label for="textSize">Tamanho</label><input type="range" id="textSize" min="24" max="88" value="50" /></div>
+          </section>
+
+          <section class="panel" id="panel-cena" data-panel-content="cena" hidden>
+            <div class="panel-intro"><span class="intro-number">06</span><div><h3>Ambiente</h3><p>Escolha o fundo da prévia.</p></div></div><div class="section"><div class="section-title">Plano de fundo</div><div class="background-grid"><button class="background-option active" type="button" data-bg="#282C31"><i style="--scene:#282C31"></i>Estúdio</button><button class="background-option" type="button" data-bg="#D7D2C6"><i style="--scene:#D7D2C6"></i>Linho</button><button class="background-option" type="button" data-bg="#8B5E50"><i style="--scene:#8B5E50"></i>Argila</button><button class="background-option" type="button" data-bg="#E8E6E0"><i style="--scene:#E8E6E0"></i>Claro</button></div></div>
+          </section>
+
+          <section class="panel" id="panel-exportar" data-panel-content="exportar" hidden>
+            <div class="panel-intro"><span class="intro-number">07</span><div><h3>Quase pronto</h3><p>Exporte as duas vistas em um arquivo.</p></div></div><div class="export-preview"><div class="mini-shirts"><span>FRENTE</span><span>COSTAS</span></div><strong>PNG · frente + costas</strong><small>Alta resolução · salvo no seu dispositivo</small></div><button class="button primary wide-button" id="exportPanelButton" type="button"><span>↓</span> Baixar PNG</button><p class="panel-note export-note">A imagem é preparada no navegador. Nada é enviado para um servidor.</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+    <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
