@@ -36,7 +36,7 @@
 
         <main class="workspace">
           <div class="workspace-header">
-            <div><p class="eyebrow">EDITOR DE CAMISETA</p><h1>Vista ao vivo</h1><p class="workspace-subtitle">Personalize sua peça em três dimensões.</p></div>
+            <div><p class="eyebrow">EDITOR DE CAMISETA</p><h1>Vista ao vivo</h1><p class="workspace-subtitle">Personalize uma malha 3D realista em três dimensões.</p></div>
             <div class="view-switch" role="group" aria-label="Lado da camiseta">
               <button class="view-button active" type="button" data-angle="0" aria-pressed="true">Frente</button>
               <button class="view-button" type="button" data-angle="180" aria-pressed="false">Costas</button>
@@ -47,7 +47,7 @@
             <div class="stage-label"><span class="live-dot"></span><span>ÁREA DE TRABALHO</span><span class="stage-divider">/</span><strong id="angleLabel">FRENTE</strong></div>
             <div id="viewport"><div id="three"></div><div class="loading" id="loadingMessage">Preparando seu estúdio…</div></div>
             <div class="stage-footer">
-              <div class="model-name"><strong id="modelLabel">Camiseta essencial</strong><span id="colorLabel">· #E7E4DC</span></div>
+              <div class="model-name"><strong id="modelLabel">Camiseta clássica</strong><span id="colorLabel">· #E7E4DC</span></div>
               <p class="stage-hint" id="stageHint">Arraste para girar · use a roda ou + / − para aproximar</p>
               <div class="zoom-controls" aria-label="Controles de zoom">
                 <button id="zoomOut" type="button" aria-label="Diminuir zoom" title="Diminuir zoom">−</button><span id="zoomLabel">100%</span><button id="zoomIn" type="button" aria-label="Aumentar zoom" title="Aumentar zoom">+</button><button class="fit-button" id="fitButton" type="button" aria-label="Ajustar ao quadro" title="Ajustar camiseta ao quadro">⌗</button>
@@ -66,16 +66,14 @@
           </section>
 
           <section class="panel" id="panel-modelos" data-panel-content="modelos" hidden>
-            <div class="panel-intro"><span class="intro-number">02</span><div><h3>Escolha o modelo</h3><p>Comece pela silhueta da peça.</p></div></div>
+            <div class="panel-intro"><span class="intro-number">02</span><div><h3>Escolha a peça</h3><p>Modelos 3D comunitários licenciados.</p></div></div>
             <div class="model-grid">
-              <button class="model-option active" type="button" data-model="tee" aria-pressed="true"><span class="model-glyph">▱</span><span>Camiseta</span></button>
-              <button class="model-option" type="button" data-model="long" aria-pressed="false"><span class="model-glyph">⌑</span><span>Manga longa</span></button>
-              <button class="model-option" type="button" data-model="cropped" aria-pressed="false"><span class="model-glyph">▰</span><span>Cropped</span></button>
-              <button class="model-option" type="button" data-model="hoodie" aria-pressed="false"><span class="model-glyph">⌂</span><span>Moletom</span></button>
-              <button class="model-option" type="button" data-model="tank" aria-pressed="false"><span class="model-glyph">♧</span><span>Regata</span></button>
-              <button class="model-option" type="button" data-model="polo" aria-pressed="false"><span class="model-glyph">◇</span><span>Polo</span></button>
-              <button class="model-option" type="button" data-model="button" aria-pressed="false"><span class="model-glyph">⊞</span><span>Camisa</span></button>
-            </div><p class="panel-note">Ajuste o zoom para enquadrar qualquer modelo.</p>
+              <button class="model-option active" type="button" data-model="tee" aria-pressed="true"><span class="model-glyph">▱</span><span>Camiseta clássica</span><small>3D · CC BY 4.0</small></button>
+              <button class="model-option" type="button" data-model="teeAlt" aria-pressed="false"><span class="model-glyph">▱</span><span>Camiseta em ângulo</span><small>3D · CC BY 4.0</small></button>
+              <button class="model-option" type="button" data-model="hoodie" aria-pressed="false"><span class="model-glyph">⌂</span><span>Moletom</span><small>3D · CC BY 4.0</small></button>
+              <button class="model-option" type="button" data-model="polo" aria-pressed="false"><span class="model-glyph">◇</span><span>Polo</span><small>3D · CC BY 4.0</small></button>
+              <button class="model-option" type="button" data-model="button" aria-pressed="false"><span class="model-glyph">⊞</span><span>Camisa xadrez</span><small>3D · CC BY 4.0</small></button>
+            </div><p class="panel-note">Ajuste o zoom para enquadrar qualquer peça. As malhas são licenciadas individualmente.</p><a class="model-credit-link" href="/models/ATTRIBUTION.md" target="_blank" rel="noopener">Créditos e licenças dos modelos ↗</a>
           </section>
 
           <section class="panel" id="panel-cores" data-panel-content="cores" hidden>

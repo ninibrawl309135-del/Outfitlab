@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './style.css';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -15,7 +16,10 @@ const state = {
 };
 const strokes = { front: [], back: [] };
 let modelGroup = new THREE.Group();
-let garment = null;
+let modelBounds = new THREE.Box3();
+let modelReady = false;
+let modelLoadToken = 0;
+let garmentMaterials = [];
 let frontArt = null;
 let backArt = null;
 let frontTexture = null;
@@ -30,6 +34,7 @@ let feedbackTimer = 0;
 let wheelDragging = false;
 let fittedSize = 4.8;
 let wheelBasePixels = null;
+const gltfLoader = new GLTFLoader();
 
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-2.6, 2.6, 2.6, -2.6, 0.1, 60);
@@ -70,102 +75,78 @@ function ensureArtworkCanvases() {
   backContext = backCanvas.getContext('2d');
 }
 
-const modelNames = {
-  tee: 'Camiseta essencial', long: 'Camiseta manga longa', cropped: 'Cropped',
-  hoodie: 'Moletom', tank: 'Regata', polo: 'Polo', button: 'Camisa casual',
+const modelCatalog = {
+  tee: { name: 'Camiseta clássica', src: '/models/tee-essential.glb', orientation: { up: 'y', front: 'z' } },
+  teeAlt: { name: 'Camiseta em ângulo', src: '/models/tee-gradient.glb', orientation: { up: 'y', front: 'z' } },
+  hoodie: { name: 'Moletom', src: '/models/hoodie.glb', orientation: { up: 'y', front: 'z' } },
+  polo: { name: 'Polo', src: '/models/polo.glb', orientation: { up: 'z', front: 'x' } },
+  button: { name: 'Camisa xadrez', src: '/models/plaid-shirt.glb', orientation: { up: 'y', front: 'z' } },
 };
+const modelNames = Object.fromEntries(Object.entries(modelCatalog).map(([key, model]) => [key, model.name]));
 
-function shirtShape(type) {
-  const shape = new THREE.Shape();
-  const bodyWidth = type === 'hoodie' ? 0.92 : type === 'tank' ? 0.80 : 0.84;
-  const bottom = type === 'cropped' ? -0.90 : type === 'hoodie' ? -1.42 : -1.42;
-  const shoulder = type === 'hoodie' ? 1.48 : 1.40;
-  const neckY = type === 'polo' ? 1.16 : 1.10;
-  shape.moveTo(-bodyWidth, bottom);
-  shape.bezierCurveTo(-bodyWidth - 0.05, bottom + 0.45, -bodyWidth - 0.04, 0.05, -bodyWidth, 0.34);
-  if (type === 'tank') {
-    shape.bezierCurveTo(-0.98, 0.68, -0.84, 1.12, -0.66, shoulder);
-    shape.lineTo(-0.46, shoulder - 0.02);
-    shape.bezierCurveTo(-0.35, 1.20, -0.18, neckY, 0, neckY);
-    shape.bezierCurveTo(0.18, neckY, 0.35, 1.20, 0.46, shoulder - 0.02);
-    shape.lineTo(0.66, shoulder);
-    shape.bezierCurveTo(0.84, 1.12, 0.98, 0.68, bodyWidth, 0.34);
-  } else if (type === 'long' || type === 'hoodie') {
-    const cuffY = type === 'hoodie' ? -1.06 : -1.0;
-    const cuffX = type === 'hoodie' ? 2.02 : 1.91;
-    shape.lineTo(-1.10, 0.13);
-    shape.bezierCurveTo(-1.39, -0.14, -1.53, cuffY + 0.34, -cuffX, cuffY);
-    shape.lineTo(-cuffX - 0.18, cuffY + 0.16);
-    shape.bezierCurveTo(-1.78, 0.16, -1.55, 0.72, -1.18, shoulder - 0.25);
-    shape.lineTo(-0.52, shoulder);
-    shape.bezierCurveTo(-0.36, 1.18, -0.18, neckY, 0, neckY);
-    shape.bezierCurveTo(0.18, neckY, 0.36, 1.18, 0.52, shoulder);
-    shape.lineTo(1.18, shoulder - 0.25);
-    shape.bezierCurveTo(1.55, 0.72, 1.78, 0.16, cuffX + 0.18, cuffY + 0.16);
-    shape.lineTo(cuffX, cuffY);
-    shape.bezierCurveTo(1.53, cuffY + 0.34, 1.39, -0.14, 1.10, 0.13);
-    shape.lineTo(bodyWidth, 0.34);
-  } else {
-    shape.lineTo(-1.12, 0.12);
-    shape.bezierCurveTo(-1.43, 0.24, -1.77, 0.38, -1.96, 0.48);
-    shape.lineTo(-2.13, 1.02);
-    shape.bezierCurveTo(-1.87, 1.23, -1.47, 1.38, -1.08, shoulder);
-    shape.lineTo(-0.50, shoulder);
-    shape.bezierCurveTo(-0.36, 1.18, -0.18, neckY, 0, neckY);
-    shape.bezierCurveTo(0.18, neckY, 0.36, 1.18, 0.50, shoulder);
-    shape.lineTo(1.08, shoulder);
-    shape.bezierCurveTo(1.47, 1.38, 1.87, 1.23, 2.13, 1.02);
-    shape.lineTo(1.96, 0.48);
-    shape.bezierCurveTo(1.77, 0.38, 1.43, 0.24, 1.12, 0.12);
-    shape.lineTo(bodyWidth, 0.34);
+function axisVector(axis) {
+  const vector = new THREE.Vector3();
+  vector[axis] = 1;
+  return vector;
+}
+
+function orientGarment(frame, orientation) {
+  const up = axisVector(orientation.up);
+  const front = axisVector(orientation.front);
+  const right = new THREE.Vector3().crossVectors(up, front).normalize();
+  const basis = new THREE.Matrix4().makeBasis(right, up, front).transpose();
+  frame.quaternion.setFromRotationMatrix(basis);
+}
+
+function prepareColorMap(source) {
+  const image = source?.image;
+  const width = image?.naturalWidth || image?.width || 0;
+  const height = image?.naturalHeight || image?.height || 0;
+  if (!width || !height) return source;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height);
+    let luminanceSum = 0;
+    let samples = 0;
+    for (let i = 0; i < pixels.data.length; i += 32) {
+      if (pixels.data[i + 3] < 16) continue;
+      luminanceSum += 0.2126 * pixels.data[i] + 0.7152 * pixels.data[i + 1] + 0.0722 * pixels.data[i + 2];
+      samples += 1;
+    }
+    const average = samples ? luminanceSum / samples : 255;
+    if (average >= 72) return source;
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      if (pixels.data[i + 3] < 8) continue;
+      const light = 0.2126 * pixels.data[i] + 0.7152 * pixels.data[i + 1] + 0.0722 * pixels.data[i + 2];
+      const neutral = Math.max(112, Math.min(238, Math.round(166 + (light - average) * 1.35)));
+      pixels.data[i] = neutral;
+      pixels.data[i + 1] = neutral;
+      pixels.data[i + 2] = neutral;
+    }
+    context.putImageData(pixels, 0, 0);
+    const editable = new THREE.CanvasTexture(canvas);
+    editable.colorSpace = source.colorSpace || THREE.SRGBColorSpace;
+    editable.flipY = source.flipY;
+    editable.wrapS = source.wrapS;
+    editable.wrapT = source.wrapT;
+    editable.repeat.copy(source.repeat);
+    editable.offset.copy(source.offset);
+    editable.center.copy(source.center);
+    editable.rotation = source.rotation;
+    editable.magFilter = source.magFilter;
+    editable.minFilter = source.minFilter;
+    editable.anisotropy = source.anisotropy;
+    editable.needsUpdate = true;
+    source.dispose();
+    return editable;
+  } catch (error) {
+    console.warn('A textura original foi mantida porque não pôde ser preparada para recoloração.', error);
+    return source;
   }
-  shape.bezierCurveTo(bodyWidth + 0.04, 0.02, bodyWidth + 0.02, bottom + 0.40, bodyWidth, bottom);
-  shape.bezierCurveTo(bodyWidth * 0.68, bottom - 0.045, -bodyWidth * 0.68, bottom - 0.045, -bodyWidth, bottom);
-  return { shape, bodyWidth, bottom, shoulder, neckY };
-}
-
-function addLine(points, z = 0.14, color = 0x88877f, opacity = 0.28) {
-  const geometry = new THREE.BufferGeometry().setFromPoints(points.map(([x, y]) => new THREE.Vector3(x, y, z)));
-  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity }));
-  modelGroup.add(line);
-}
-
-function createMappedShape(shape) {
-  const geometry = new THREE.ShapeGeometry(shape, 24);
-  geometry.computeBoundingBox();
-  const bounds = geometry.boundingBox;
-  const positions = geometry.attributes.position;
-  const uv = new Float32Array(positions.count * 2);
-  const width = bounds.max.x - bounds.min.x;
-  const height = bounds.max.y - bounds.min.y;
-  for (let i = 0; i < positions.count; i += 1) {
-    uv[i * 2] = (positions.getX(i) - bounds.min.x) / width;
-    uv[i * 2 + 1] = (positions.getY(i) - bounds.min.y) / height;
-  }
-  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  return geometry;
-}
-
-function addPatch(points, z, color, opacity = 1) {
-  const patchShape = new THREE.Shape();
-  patchShape.moveTo(points[0][0], points[0][1]);
-  points.slice(1).forEach(([x, y]) => patchShape.lineTo(x, y));
-  patchShape.closePath();
-  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(patchShape, 8), new THREE.MeshStandardMaterial({ color, roughness: 0.9, transparent: opacity < 1, opacity, side: THREE.DoubleSide }));
-  mesh.position.z = z;
-  modelGroup.add(mesh);
-}
-
-function addFabric(shape, depth) {
-  const geometry = new THREE.ExtrudeGeometry(shape, { depth, steps: 1, bevelEnabled: true, bevelSegments: 3, bevelSize: 0.025, bevelThickness: 0.025, curveSegments: 18 });
-  geometry.translate(0, 0, -depth / 2);
-  geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ color: state.color, roughness: 0.88, metalness: 0.012 });
-  garment = new THREE.Mesh(geometry, material);
-  garment.castShadow = true;
-  garment.receiveShadow = true;
-  garment.userData.role = 'fabric';
-  modelGroup.add(garment);
 }
 
 function drawArt(side) {
@@ -173,41 +154,23 @@ function drawArt(side) {
   const ctx = side === 'front' ? frontContext : backContext;
   const texture = side === 'front' ? frontTexture : backTexture;
   ctx.clearRect(0, 0, 512, 560);
-  const clothTone = ctx.createLinearGradient(115, 0, 397, 0);
-  clothTone.addColorStop(0, 'rgba(18,20,22,.10)');
-  clothTone.addColorStop(0.17, 'rgba(255,255,255,.07)');
-  clothTone.addColorStop(0.52, 'rgba(255,255,255,.015)');
-  clothTone.addColorStop(0.84, 'rgba(18,20,22,.07)');
-  clothTone.addColorStop(1, 'rgba(18,20,22,.12)');
-  ctx.fillStyle = clothTone;
-  ctx.fillRect(0, 0, 512, 560);
-  ctx.save();
-  ctx.strokeStyle = 'rgba(24,26,28,.10)';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(157, 162);
-  ctx.bezierCurveTo(150, 250, 158, 380, 163, 500);
-  ctx.moveTo(355, 162);
-  ctx.bezierCurveTo(362, 250, 354, 380, 349, 500);
-  ctx.stroke();
-  ctx.restore();
   if (state.image && state.image.complete && state.image.naturalWidth) {
-    const scale = Math.min(178 / state.image.naturalWidth, 150 / state.image.naturalHeight, 1);
+    const scale = Math.min(240 / state.image.naturalWidth, 180 / state.image.naturalHeight, 1);
     const width = state.image.naturalWidth * scale;
     const height = state.image.naturalHeight * scale;
-    ctx.drawImage(state.image, (512 - width) / 2, 74 + (150 - height) / 2, width, height);
+    ctx.drawImage(state.image, (512 - width) / 2, 68 + (180 - height) / 2, width, height);
   }
   if (state.text.trim()) {
     ctx.fillStyle = state.textColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `700 ${state.textSize}px Arial, sans-serif`;
-    const maxTextWidth = 180;
+    const maxTextWidth = 330;
     const measuredTextWidth = ctx.measureText(state.text.trim()).width;
     if (measuredTextWidth > maxTextWidth) {
       ctx.font = `700 ${Math.max(20, state.textSize * maxTextWidth / measuredTextWidth)}px Arial, sans-serif`;
     }
-    ctx.fillText(state.text.trim(), 256, state.image ? 300 : 245);
+    ctx.fillText(state.text.trim(), 256, state.image ? 340 : 265);
   }
   for (const stroke of strokes[side]) {
     const points = stroke.points;
@@ -232,104 +195,132 @@ function drawArt(side) {
 }
 
 function disposeGroup(group) {
+  if (!group) return;
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
   group.traverse((item) => {
-    if (item.geometry) item.geometry.dispose();
-    if (item.material) {
-      const mats = Array.isArray(item.material) ? item.material : [item.material];
-      mats.forEach((material) => material.dispose());
-    }
+    if (item.geometry) geometries.add(item.geometry);
+    if (item.material) (Array.isArray(item.material) ? item.material : [item.material]).forEach((material) => materials.add(material));
   });
+  materials.forEach((material) => {
+    Object.values(material).forEach((value) => { if (value?.isTexture) textures.add(value); });
+    material.dispose();
+  });
+  geometries.forEach((geometry) => geometry.dispose());
+  textures.forEach((texture) => texture.dispose());
 }
 
 function buildModel(type) {
-  frontTexture?.dispose();
-  backTexture?.dispose();
-  disposeGroup(modelGroup);
-  scene.remove(modelGroup);
-  modelGroup = new THREE.Group();
-  modelGroup.rotation.set(state.tilt, state.rotation, 0);
-  garment = null;
-  frontTexture = null;
-  backTexture = null;
-  const pattern = shirtShape(type);
-  const depth = 0.16;
-  addFabric(pattern.shape, depth);
-  const collar = [];
-  for (let i = 0; i <= 20; i += 1) {
-    const t = i / 20;
-    const x = -0.48 + 0.96 * t;
-    const y = pattern.shoulder - 0.035 - Math.sin(Math.PI * t) * (pattern.shoulder - pattern.neckY - 0.035);
-    collar.push([x, y]);
-  }
-  addLine(collar, 0.145, 0x77766f, 0.32);
-  addLine([[-pattern.bodyWidth + 0.08, pattern.bottom + 0.085], [0, pattern.bottom + 0.105], [pattern.bodyWidth - 0.08, pattern.bottom + 0.085]], 0.145, 0x77766f, 0.24);
-  if (type === 'polo') {
-    addPatch([[-0.40, 1.37], [-0.12, 1.10], [-0.50, 1.23]], 0.142, 0xd4d0c7);
-    addPatch([[0.40, 1.37], [0.12, 1.10], [0.50, 1.23]], 0.142, 0xd4d0c7);
-    for (let i = 0; i < 2; i += 1) {
-      const button = new THREE.Mesh(new THREE.CircleGeometry(0.024, 14), new THREE.MeshBasicMaterial({ color: 0x77776f }));
-      button.position.set(0, 0.88 - i * 0.13, 0.15);
-      modelGroup.add(button);
-    }
-  }
-  if (type === 'button') {
-    const placket = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.25, 0.025), new THREE.MeshStandardMaterial({ color: shadeColor(state.color, -0.08), roughness: 0.85 }));
-    placket.position.set(0, 0.38, 0.13);
-    modelGroup.add(placket);
-    for (let i = 0; i < 5; i += 1) {
-      const button = new THREE.Mesh(new THREE.CircleGeometry(0.022, 14), new THREE.MeshBasicMaterial({ color: 0x77776f }));
-      button.position.set(0, 0.78 - i * 0.2, 0.15);
-      modelGroup.add(button);
-    }
-  }
-  if (type === 'hoodie') {
-    const hoodShape = new THREE.Shape();
-    hoodShape.moveTo(-0.53, 1.25);
-    hoodShape.bezierCurveTo(-0.62, 1.73, -0.36, 1.95, 0, 1.96);
-    hoodShape.bezierCurveTo(0.36, 1.95, 0.62, 1.73, 0.53, 1.25);
-    hoodShape.bezierCurveTo(0.25, 1.30, -0.25, 1.30, -0.53, 1.25);
-    const hood = new THREE.Mesh(new THREE.ShapeGeometry(hoodShape, 16), new THREE.MeshStandardMaterial({ color: shadeColor(state.color, -0.05), roughness: 0.92, side: THREE.DoubleSide }));
-    hood.position.z = -0.14;
-    modelGroup.add(hood);
-    addPatch([[-0.58, -0.48], [0.58, -0.48], [0.51, -0.98], [-0.51, -0.98]], 0.145, shadeColor(state.color, -0.025));
-    addLine([[-0.58, -0.48], [-0.51, -0.98], [0.51, -0.98], [0.58, -0.48]], 0.15, 0x77766f, 0.3);
-  }
-  const mapGeometry = createMappedShape(pattern.shape);
-  const artwork = (texture) => new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
-  frontTexture = new THREE.CanvasTexture(frontCanvas);
-  backTexture = new THREE.CanvasTexture(backCanvas);
-  frontTexture.colorSpace = THREE.SRGBColorSpace;
-  backTexture.colorSpace = THREE.SRGBColorSpace;
-  frontArt = new THREE.Mesh(mapGeometry, artwork(frontTexture));
-  backArt = new THREE.Mesh(mapGeometry.clone(), artwork(backTexture));
-  frontArt.position.z = 0.112;
-  backArt.position.z = -0.112;
-  backArt.rotation.y = Math.PI;
-  frontArt.renderOrder = 5;
-  backArt.renderOrder = 5;
-  modelGroup.add(frontArt, backArt);
-  scene.add(modelGroup);
-  drawArt('front');
-  drawArt('back');
-  state.model = type;
-  $('#modelLabel').textContent = modelNames[type];
-  fitToFrame();
-}
+  const definition = modelCatalog[type];
+  if (!definition) return Promise.resolve(false);
+  const requestToken = ++modelLoadToken;
+  $('#loadingMessage').textContent = 'Carregando malha 3D…';
+  $('#loadingMessage').classList.remove('hidden');
+  return new Promise((resolve) => {
+    gltfLoader.load(definition.src, (gltf) => {
+      if (requestToken !== modelLoadToken) {
+        disposeGroup(gltf.scene);
+        resolve(false);
+        return;
+      }
+      const frame = new THREE.Group();
+      frame.add(gltf.scene);
+      orientGarment(frame, definition.orientation);
+      frame.updateMatrixWorld(true);
+      const sourceBounds = new THREE.Box3().setFromObject(frame);
+      const sourceSize = sourceBounds.getSize(new THREE.Vector3());
+      if (!Number.isFinite(sourceSize.y) || sourceSize.y <= 0) {
+        disposeGroup(frame);
+        $('#loadingMessage').classList.add('hidden');
+        showFeedback('Este modelo não tem uma orientação 3D válida.');
+        resolve(false);
+        return;
+      }
+      const scale = 3.15 / sourceSize.y;
+      const center = sourceBounds.getCenter(new THREE.Vector3());
+      frame.scale.setScalar(scale);
+      frame.position.copy(center).multiplyScalar(-scale);
+      frame.updateMatrixWorld(true);
+      const fittedBounds = new THREE.Box3().setFromObject(frame);
 
-function shadeColor(hex, amount) {
-  const color = new THREE.Color(hex);
-  if (amount < 0) color.multiplyScalar(1 + amount);
-  else color.lerp(new THREE.Color('#ffffff'), amount);
-  return `#${color.getHexString()}`;
+      const previousGroup = modelGroup;
+      scene.remove(previousGroup);
+      frontTexture?.dispose();
+      backTexture?.dispose();
+      disposeGroup(previousGroup);
+      frontTexture = new THREE.CanvasTexture(frontCanvas);
+      backTexture = new THREE.CanvasTexture(backCanvas);
+      frontTexture.colorSpace = THREE.SRGBColorSpace;
+      backTexture.colorSpace = THREE.SRGBColorSpace;
+      modelGroup = new THREE.Group();
+      modelGroup.rotation.set(state.tilt, state.rotation, 0);
+      scene.add(modelGroup);
+      garmentMaterials = [];
+      frame.traverse((item) => {
+        if (!item.isMesh) return;
+        if (!item.geometry.attributes.normal && item.geometry.attributes.position) item.geometry.computeVertexNormals();
+        item.castShadow = true;
+        item.receiveShadow = true;
+        const materials = Array.isArray(item.material) ? item.material : [item.material];
+        materials.forEach((material) => {
+          if (material.map) material.map = prepareColorMap(material.map);
+          if (material.color) material.color.set(state.color);
+          if ('roughness' in material) material.roughness = Math.max(0.84, material.roughness ?? 0.84);
+          if ('metalness' in material) material.metalness = 0;
+          material.needsUpdate = true;
+          garmentMaterials.push(material);
+        });
+      });
+      modelGroup.add(frame);
+      modelBounds.copy(fittedBounds);
+      const boundsSize = fittedBounds.getSize(new THREE.Vector3());
+      const artWidth = Math.max(boundsSize.x * 0.42, 0.42);
+      const artHeight = Math.max(boundsSize.y * 0.24, 0.62);
+      const artY = fittedBounds.min.y + boundsSize.y * 0.59;
+      const artOffset = Math.max(boundsSize.z * 0.025, 0.008);
+      const artworkMaterial = (texture) => new THREE.MeshBasicMaterial({
+        map: texture, transparent: true, depthWrite: false, depthTest: true,
+        side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2,
+      });
+      frontArt = new THREE.Mesh(new THREE.PlaneGeometry(artWidth, artHeight), artworkMaterial(frontTexture));
+      backArt = new THREE.Mesh(new THREE.PlaneGeometry(artWidth, artHeight), artworkMaterial(backTexture));
+      frontArt.position.set((fittedBounds.min.x + fittedBounds.max.x) / 2, artY, fittedBounds.max.z + artOffset);
+      backArt.position.set((fittedBounds.min.x + fittedBounds.max.x) / 2, artY, fittedBounds.min.z - artOffset);
+      backArt.rotation.y = Math.PI;
+      frontArt.renderOrder = 5;
+      backArt.renderOrder = 5;
+      modelGroup.add(frontArt, backArt);
+      drawArt('front');
+      drawArt('back');
+      state.model = type;
+      state.zoom = 1;
+      modelReady = true;
+      $('#modelLabel').textContent = definition.name;
+      $('#loadingMessage').classList.add('hidden');
+      fitToFrame();
+      resolve(true);
+    }, undefined, (error) => {
+      if (requestToken !== modelLoadToken) { resolve(false); return; }
+      console.error('Falha ao carregar o modelo 3D.', error);
+      $('#loadingMessage').classList.add('hidden');
+      $$('.model-option').forEach((button) => {
+        const active = button.dataset.model === state.model;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      showFeedback('Não foi possível carregar este modelo 3D. Tente outra opção.');
+      resolve(false);
+    });
+  });
 }
 
 function fitToFrame() {
-  if (!garment) return;
-  const bounds = new THREE.Box3().setFromObject(modelGroup);
-  const size = bounds.getSize(new THREE.Vector3());
+  if (!modelReady) return;
+  const size = modelBounds.getSize(new THREE.Vector3());
   const element = host.getBoundingClientRect();
   const aspect = Math.max(0.25, element.width / Math.max(1, element.height));
-  fittedSize = Math.max(size.y * 1.28, size.x / aspect * 1.24, 3.65);
+  fittedSize = Math.max(size.y * 1.25, size.x / aspect * 1.25, size.z * 1.2, 3.65);
   updateCamera();
 }
 
@@ -356,9 +347,7 @@ resizeObserver.observe(host);
 
 function setColor(color) {
   state.color = color.toUpperCase();
-  if (garment) garment.material.color.set(state.color);
-  const placket = modelGroup.children.find((item) => item.material?.color && item.geometry?.type === 'BoxGeometry');
-  if (placket && state.model === 'button') placket.material.color.set(shadeColor(state.color, -0.08));
+  garmentMaterials.forEach((material) => { if (material.color) material.color.set(state.color); });
   $('#shirtColor').value = state.color;
   $('#shirtColorText').textContent = state.color;
   $('#colorLabel').textContent = `· ${state.color}`;
@@ -533,8 +522,9 @@ function setPanel(name) {
 $$('.tool').forEach((button) => button.addEventListener('click', () => setPanel(button.dataset.panel)));
 $$('.model-option').forEach((button) => button.addEventListener('click', () => {
   $$('.model-option').forEach((item) => { const active = item === button; item.classList.toggle('active', active); item.setAttribute('aria-pressed', String(active)); });
-  buildModel(button.dataset.model);
-  showFeedback(`${modelNames[button.dataset.model]} selecionada.`);
+  buildModel(button.dataset.model).then((loaded) => {
+    if (loaded) showFeedback(`${modelNames[button.dataset.model]} selecionada.`);
+  });
 }));
 
 function normalizedAngle(angle) { return ((angle % 360) + 360) % 360; }
@@ -710,6 +700,7 @@ $('#zoomOut').addEventListener('click', () => { state.zoom = Math.max(0.62, stat
 $('#fitButton').addEventListener('click', () => { state.zoom = 1; fitToFrame(); });
 
 function exportPng() {
+  if (!modelReady) { showFeedback('Aguarde o carregamento da peça antes de exportar.'); return; }
   const exportWidth = 720;
   const exportHeight = 820;
   const gap = 30;
@@ -726,11 +717,13 @@ function exportPng() {
   const oldRotation = state.rotation;
   const oldTilt = state.tilt;
   const oldZoom = state.zoom;
+  const oldFittedSize = fittedSize;
   const oldBackground = stage.style.backgroundColor;
   renderer.setPixelRatio(1);
   renderer.setSize(exportWidth, exportHeight, false);
-  fittedSize = Math.max(3.25, fittedSize);
   const exportAspect = exportWidth / exportHeight;
+  const exportModelSize = modelBounds.getSize(new THREE.Vector3());
+  fittedSize = Math.max(exportModelSize.y * 1.25, exportModelSize.x / exportAspect * 1.25, exportModelSize.z * 1.2, 3.65);
   camera.left = -(fittedSize * exportAspect) / 2;
   camera.right = (fittedSize * exportAspect) / 2;
   camera.top = fittedSize / 2;
@@ -760,6 +753,7 @@ function exportPng() {
   state.rotation = oldRotation;
   state.tilt = oldTilt;
   state.zoom = oldZoom;
+  fittedSize = oldFittedSize;
   modelGroup.rotation.set(state.tilt, state.rotation, 0);
   stage.style.backgroundColor = oldBackground || state.background;
   updateCamera();
@@ -810,8 +804,6 @@ function init() {
   setBackground(state.background);
   displayAngle();
   resizeObserver.observe(host);
-  $('#loadingMessage').classList.add('hidden');
-  window.setTimeout(() => $('#loadingMessage').remove(), 250);
   animate();
 }
 init();
